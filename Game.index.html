@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbit Cleaner: Operation 150M</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Essential Offline Styles */
+        .hidden { display: none !important; }
+        body{margin:0;overflow:hidden;background-color:#050510;color:white;font-family:'Courier New',Courier,monospace;touch-action:none}
+        canvas{display:block;cursor:none}
+        .ui-panel{position:absolute;pointer-events:none;text-shadow:0 2px 4px rgba(0,0,0,0.8);font-weight:bold}
+        .top-left{top:20px;left:20px}
+        .top-center{top:20px;left:50%;transform:translateX(-50%);text-align:center}
+        .top-right{top:20px;right:20px;text-align:right}
+        .menu-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10;cursor:default}
+        .btn{background:linear-gradient(to bottom,#4f46e5,#4338ca);border:2px solid #6366f1;padding:12px 24px;color:white;font-family:inherit;font-size:1.2rem;cursor:pointer;transition:all 0.2s;margin:10px;border-radius:8px;pointer-events:auto}
+        .btn:hover{transform:scale(1.05);background:linear-gradient(to bottom,#6366f1,#4f46e5);box-shadow:0 0 15px rgba(99,102,241,0.5)}
+        .btn:disabled{background:#333;border-color:#555;cursor:not-allowed;transform:none;box-shadow:none}
+        .upgrade-card{background:rgba(30,41,59,0.9);border:1px solid #475569;padding:20px;margin:10px;border-radius:8px;width:300px;text-align:left;position:relative;overflow:hidden}
+        .elite-card{background:rgba(40,10,60,0.95);border:2px solid #d946ef;box-shadow:0 0 15px rgba(217,70,239,0.3)}
+        .bar-container{width:200px;height:20px;background:#333;border:2px solid #555;margin-top:5px;position:relative}
+        .bar-fill{height:100%;background:#22c55e;width:100%;transition:width 0.3s}
+        .storage-bar-fill{background:#eab308}
+        .card-desc{transition:opacity 0.2s ease-in-out;opacity:1}
+        .card-stats{position:absolute;top:50px;left:20px;right:20px;opacity:0;transition:opacity 0.2s ease-in-out;pointer-events:none;color:#4ade80;font-weight:bold;background:rgba(0,0,0,0.6);padding:5px;border-radius:4px;text-align:center}
+        .upgrade-card:hover .card-desc{opacity:0}
+        .upgrade-card:hover .card-stats{opacity:1}
+        input[type=range]{-webkit-appearance:none;width:100%;background:transparent}
+        input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:20px;width:20px;border-radius:50%;background:#4f46e5;cursor:pointer;margin-top:-8px;border:2px solid #fff}
+        input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:pointer;background:#4b5563;border-radius:2px}
+    </style>
+</head>
+<body>
+    <div class="ui-panel top-left">
+        <div class="text-xl text-red-400">HULL INTEGRITY</div>
+        <div class="bar-container"><div id="healthBar" class="bar-fill bg-red-600"></div></div>
+        <div id="healthText" class="text-sm mt-1">100/100</div>
+    </div>
+    <div class="ui-panel top-center">
+        <div class="text-2xl text-blue-400">ROUND <span id="roundDisplay">1</span></div>
+        <div id="timerDisplay" class="text-xl text-white mt-1">Ready?</div>
+    </div>
+    <div class="ui-panel top-right">
+        <div class="text-xl text-yellow-400">ASTEROIDS COLLECTED</div>
+        <div id="scoreDisplay" class="text-2xl">0 / 150,000,000</div>
+        <div class="mt-4 text-sm text-yellow-200">CARGO BAY</div>
+        <div class="bar-container" style="width: 150px; float: right;"><div id="storageBar" class="bar-fill storage-bar-fill" style="width: 0%"></div></div>
+        <div id="storageText" class="clear-both text-xs mt-1">0 / 50</div>
+    </div>
+    <div id="menuOverlay" class="menu-overlay">
+        <h1 class="text-5xl mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 font-black tracking-widest">ORBIT CLEANER</h1>
+        <p class="mb-8 text-gray-300 max-w-md text-center">Mission: Collect 150,000,000 units of asteroids.<br>Avoid satellites. Survive or fill your cargo to bank asteroids.<br><span class="text-sm text-blue-400 mt-2 block">Controls: WASD or Hold Left Click to Move | Mouse to Aim | ESC to Pause</span></p>
+        <div id="upgradeContainer" class="hidden flex flex-col items-center w-full max-h-[70vh] overflow-y-auto"></div>
+        <button id="startBtn" class="btn mt-8 text-xl font-bold">START MISSION</button>
+    </div>
+    <div id="pauseMenu" class="menu-overlay hidden">
+        <h1 class="text-6xl text-white font-bold mb-4 tracking-widest">PAUSED</h1>
+        <div class="bg-slate-800 p-6 rounded-lg border border-slate-600 w-80 text-center">
+            <label for="sensitivitySlider" class="block text-blue-300 font-bold mb-2">Mouse Sensitivity</label>
+            <div class="flex items-center gap-4"><span class="text-xs text-gray-400">Slow</span><input type="range" id="sensitivitySlider" min="0.1" max="3.0" step="0.1" value="1.0" class="flex-grow"><span class="text-xs text-gray-400">Fast</span></div>
+            <div id="sensitivityValue" class="text-sm text-yellow-400 mt-1">1.0x</div>
+            <div id="saveStatus" class="text-xs text-gray-500 mt-2 h-4"></div>
+        </div>
+        <button id="resumeBtn" class="btn mt-8 text-xl">RESUME</button>
+        <button onclick="location.reload()" class="btn mt-2 bg-red-900 border-red-700 text-sm">QUIT MISSION</button>
+    </div>
+    <div id="gameOverOverlay" class="menu-overlay hidden">
+        <h1 class="text-6xl text-red-500 font-bold mb-4">CRITICAL FAILURE</h1>
+        <p class="text-2xl mb-8">Your ship was destroyed.</p>
+        <p id="finalScore" class="text-xl text-yellow-400 mb-8">Asteroids Recovered: 0</p>
+        <button onclick="location.reload()" class="btn">REBOOT SYSTEM</button>
+    </div>
+    <div id="victoryOverlay" class="menu-overlay hidden">
+        <h1 class="text-6xl text-green-500 font-bold mb-4">ORBIT CLEANSED</h1>
+        <p class="text-2xl mb-8">Target reached! Earth is safe.</p>
+        <button onclick="location.reload()" class="btn">PLAY AGAIN</button>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+let canvas=null, ctx=null;
+// State includes spawnTimer and lastTime for Delta Time
+const state = { active: false, paused: false, round: 1, totalDebris: 0, roundTimer: 0, maxRoundTime: 1800, particles: [], stars: [], keys: {}, mouse: { x: 0, y: 0, down: false }, sensitivity: 1.0, lastDebrisValue: 10, roundEndReason: '', skipNextMove: false, lastTime: 0, spawnTimer: 0 };
+const player = { x: 0, y: 0, angle: 0, speed: 5, radius: 20, health: 100, maxHealth: 100, storage: 0, maxStorage: 100, magnetPower: 0, velocity: { x: 0, y: 0 }, friction: 0.95, acceleration: 0.5, timeBonus: 0 };
+const GOAL = 150000000;
+const COLORS = { asteroids: ['#8b8b8b', '#a9a9a9', '#696969', '#d3d3d3'], satelliteBody: '#e2e8f0', satellitePanel: '#3b82f6', warning: '#ef4444' };
+let fx = [], floatingTexts = [];
+
+window.onload = function() {
+    canvas = document.getElementById('gameCanvas');
+    if(!canvas) return;
+    ctx = canvas.getContext('2d');
+    loadSettings();
+    resize();
+    state.mouse.x = canvas.width / 2; state.mouse.y = canvas.height / 2;
+    window.addEventListener('resize', resize);
+    const startBtn = document.getElementById('startBtn');
+    if(startBtn) startBtn.onclick = () => { player.maxStorage = 2000; startRound(); };
+    const sensSlider = document.getElementById('sensitivitySlider');
+    const sensVal = document.getElementById('sensitivityValue');
+    sensSlider.addEventListener('input', (e) => { state.sensitivity = parseFloat(e.target.value); sensVal.textContent = state.sensitivity.toFixed(1) + 'x'; });
+    sensSlider.addEventListener('change', () => saveSettings());
+    const resumeBtn = document.getElementById('resumeBtn');
+    if(resumeBtn) resumeBtn.onclick = () => { canvas.requestPointerLock().catch(e=>{}); };
+    
+    document.addEventListener('pointerlockchange', () => {
+        const pauseMenu = document.getElementById('pauseMenu');
+        if (document.pointerLockElement === canvas) { state.paused = false; pauseMenu.classList.add('hidden'); state.skipNextMove = true; }
+        else if (state.active) { state.paused = true; pauseMenu.classList.remove('hidden'); }
+    });
+
+    window.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && state.active && state.paused) canvas.requestPointerLock().catch(e=>{});
+        state.keys[e.key.toLowerCase()] = true;
+    });
+    window.addEventListener('keyup', e => state.keys[e.key.toLowerCase()] = false);
+    window.addEventListener('mousemove', e => {
+        if (state.active && !state.paused && document.pointerLockElement === canvas) {
+            if (state.skipNextMove) { state.skipNextMove = false; return; }
+            state.mouse.x += e.movementX * state.sensitivity;
+            state.mouse.y += e.movementY * state.sensitivity;
+            state.mouse.x = Math.max(0, Math.min(canvas.width, state.mouse.x));
+            state.mouse.y = Math.max(0, Math.min(canvas.height, state.mouse.y));
+        } else if (!state.active) {
+            state.mouse.x = e.clientX; state.mouse.y = e.clientY;
+        }
+    });
+    window.addEventListener('mousedown', e => { if (e.button === 0) state.mouse.down = true; });
+    window.addEventListener('mouseup', e => { if (e.button === 0) state.mouse.down = false; });
+    
+    // Start Loop with timestamp
+    requestAnimationFrame(loop);
+};
+
+function saveSettings() {
+    try {
+        const statusEl = document.getElementById('saveStatus');
+        if(statusEl) statusEl.textContent = "Saving...";
+        localStorage.setItem('orbit_cleaner_settings', JSON.stringify({ sensitivity: state.sensitivity }));
+        if(statusEl) { statusEl.textContent = "Settings Saved"; setTimeout(() => statusEl.textContent = "", 2000); }
+    } catch (e) {}
+}
+
+function loadSettings() {
+    try {
+        const savedData = localStorage.getItem('orbit_cleaner_settings');
+        if (savedData) {
+            const data = JSON.parse(savedData);
+            if (data.sensitivity) {
+                state.sensitivity = data.sensitivity;
+                const sensSlider = document.getElementById('sensitivitySlider');
+                const sensVal = document.getElementById('sensitivityValue');
+                if (sensSlider) sensSlider.value = state.sensitivity;
+                if (sensVal) sensVal.textContent = state.sensitivity.toFixed(1) + 'x';
+            }
+        }
+    } catch (e) {}
+}
+
+function generateStars() {
+    state.stars = [];
+    const w = canvas.width || window.innerWidth || 800;
+    const h = canvas.height || window.innerHeight || 600;
+    for (let i = 0; i < 150; i++) state.stars.push({ x: Math.random() * w, y: Math.random() * h, size: Math.random() * 2 + 0.5, speed: Math.random() * 3 + 0.2, brightness: Math.random() });
+}
+
+function resize() {
+    if (!canvas) return;
+    const oldW = canvas.width, oldH = canvas.height;
+    canvas.width = window.innerWidth || 800; canvas.height = window.innerHeight || 600;
+    if (!state.active) { player.x = canvas.width / 2; player.y = canvas.height / 2; }
+    if (state.stars.length > 0 && oldW > 0) state.stars.forEach(s => { s.x = (s.x / oldW) * canvas.width; s.y = (s.y / oldH) * canvas.height; });
+    else generateStars();
+}
+
+function drawPlayer(ctx, x, y, angle) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+    if (state.keys['w'] || state.keys['arrowup'] || state.mouse.down) {
+        ctx.beginPath(); ctx.moveTo(-15, -5); ctx.lineTo(-25 - Math.random() * 10, 0); ctx.lineTo(-15, 5); ctx.fillStyle = Math.random() > 0.5 ? '#f59e0b' : '#ef4444'; ctx.fill();
+    }
+    ctx.beginPath(); ctx.moveTo(20, 0); ctx.lineTo(-15, 15); ctx.lineTo(-10, 0); ctx.lineTo(-15, -15); ctx.closePath();
+    ctx.fillStyle = '#f8fafc'; ctx.fill(); ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(5, 0, 5, 3, 0, 0, Math.PI * 2); ctx.fillStyle = '#0ea5e9'; ctx.fill();
+    ctx.restore();
+}
+
+function drawScrap(ctx, s) {
+    ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rotation);
+    ctx.fillStyle = s.color; ctx.beginPath(); ctx.moveTo(-s.radius * 0.8, -s.radius * 0.6); ctx.lineTo(s.radius * 0.7, -s.radius * 0.8); ctx.lineTo(s.radius, s.radius * 0.4); ctx.lineTo(0, s.radius * 0.8); ctx.lineTo(-s.radius, s.radius * 0.4); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#78350f'; ctx.beginPath(); ctx.arc(-s.radius * 0.4, -s.radius * 0.2, 2, 0, Math.PI*2); ctx.arc(s.radius * 0.4, s.radius * 0.2, 2, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#92400e'; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
+}
+
+function drawAsteroid(ctx, p) {
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rotation);
+    ctx.fillStyle = p.color; ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2;
+        const r = p.radius * (0.6 + Math.abs(Math.sin(i * 132.1 + p.seed)) * 0.6);
+        const px = Math.cos(angle) * r, py = Math.sin(angle) * r;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
+}
+
+function drawSatellite(ctx, s) {
+    ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rotation);
+    ctx.fillStyle = COLORS.satellitePanel; ctx.fillRect(-25, -8, 15, 16); ctx.fillRect(10, -8, 15, 16);
+    ctx.strokeStyle = '#1e3a8a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-25, 0); ctx.lineTo(-10, 0); ctx.moveTo(10, 0); ctx.lineTo(25, 0); ctx.stroke();
+    ctx.fillStyle = COLORS.satelliteBody; ctx.fillRect(-10, -10, 20, 20);
+    ctx.strokeStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -20); ctx.arc(0, -20, 4, 0, Math.PI * 2); ctx.stroke();
+    if (Math.floor(Date.now() / 500) % 2 === 0) { ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(5, 5, 2, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+}
+
+function spawnParticle() {
+    if (!canvas) return;
+    const isSat = Math.random() < (0.1 + (state.round * 0.02));
+    const angle = Math.random() * Math.PI * 2, dist = Math.max(canvas.width, canvas.height) / 2 + 100;
+    const x = (canvas.width / 2) + Math.cos(angle) * dist, y = (canvas.height / 2) + Math.sin(angle) * dist;
+    const tX = (canvas.width/2) + (Math.random() - 0.5) * canvas.width * 0.8, tY = (canvas.height/2) + (Math.random() - 0.5) * canvas.height * 0.8;
+    const mAngle = Math.atan2(tY - y, tX - x);
+    let type = 'asteroid', r = 15, val = 0, speed = 2 + (state.round * 0.5), color = COLORS.asteroids[Math.floor(Math.random() * COLORS.asteroids.length)];
+
+    if (isSat) { type = 'satellite'; r = 25; val = 0; }
+    else if (state.round > 10 && Math.random() < 0.15) {
+        type = 'scrap'; color = Math.random() > 0.5 ? '#d97706' : '#b45309';
+        if (Math.random() < 0.3) { r = 25; val = 900; speed *= 0.7; }
+        else { r = 12; val = 300; }
+    } else {
+        const rand = Math.random();
+        if (state.round > 15 && rand < 0.1) { r = 40; val = 400; speed *= 0.4; } 
+        else if (rand < 0.4) { r = 25; val = 200; speed *= 0.7; } 
+        else if (rand < 0.7) { r = 18; val = 150; speed *= 0.85; } 
+        else { r = 12; val = 100; }
+    }
+    
+    state.particles.push({ x: x, y: y, vx: Math.cos(mAngle) * Math.max(1, speed + Math.random() * 2), vy: Math.sin(mAngle) * Math.max(1, speed + Math.random() * 2), type: type, rotation: Math.random() * Math.PI * 2, rotSpeed: (Math.random() - 0.5) * 0.1, radius: r, color: color, seed: Math.random() * 100, value: val });
+}
+
+// Update accepts dtFactor to normalize speed across refresh rates
+function update(dt) {
+    if (!state.active || state.paused || !canvas) return;
+    
+    // Timer is in logic frames, so decrement by dt factor
+    state.roundTimer -= dt;
+    if (state.roundTimer <= 0) { state.roundEndReason = "TIME LIMIT REACHED"; endRound(); return; }
+    const timeLeft = Math.ceil(state.roundTimer / 60);
+    const td = document.getElementById('timerDisplay'); if(td) td.textContent = `Time: ${timeLeft}s`;
+
+    // Movement scaled by dt
+    if (state.keys['w'] || state.keys['arrowup']) player.velocity.y -= player.acceleration * dt;
+    if (state.keys['s'] || state.keys['arrowdown']) player.velocity.y += player.acceleration * dt;
+    if (state.keys['a'] || state.keys['arrowleft']) player.velocity.x -= player.acceleration * dt;
+    if (state.keys['d'] || state.keys['arrowright']) player.velocity.x += player.acceleration * dt;
+    if (state.mouse.down) {
+        const ma = Math.atan2(state.mouse.y - player.y, state.mouse.x - player.x);
+        player.velocity.x += Math.cos(ma) * player.acceleration * dt; player.velocity.y += Math.sin(ma) * player.acceleration * dt;
+    }
+    // Friction logic adjusted for time steps
+    player.velocity.x *= Math.pow(player.friction, dt); 
+    player.velocity.y *= Math.pow(player.friction, dt);
+    
+    player.x += player.velocity.x * dt; 
+    player.y += player.velocity.y * dt;
+    
+    player.angle = Math.atan2(state.mouse.y - player.y, state.mouse.x - player.x);
+
+    if (player.x < 0) { player.x = 0; player.velocity.x *= -0.5; } if (player.x > canvas.width) { player.x = canvas.width; player.velocity.x *= -0.5; }
+    if (player.y < 0) { player.y = 0; player.velocity.y *= -0.5; } if (player.y > canvas.height) { player.y = canvas.height; player.velocity.y *= -0.5; }
+
+    // Spawn logic using dt accumulator
+    state.spawnTimer -= dt;
+    if (state.spawnTimer <= 0) {
+        spawnParticle();
+        state.spawnTimer = Math.max(5, 40 - (state.round * 2));
+    }
+
+    for(let i=floatingTexts.length-1; i>=0; i--) {
+        let t = floatingTexts[i];
+        t.y -= t.vy * dt;
+        t.life -= 0.02 * dt;
+        if(t.life <= 0) floatingTexts.splice(i, 1);
+    }
+
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+        const p = state.particles[i];
+        p.x += p.vx * dt; p.y += p.vy * dt; p.rotation += p.rotSpeed * dt;
+        if (p.x < -200 || p.x > canvas.width + 200 || p.y < -200 || p.y > canvas.height + 200) { state.particles.splice(i, 1); continue; }
+        const dx = player.x - p.x, dy = player.y - p.y, dist = Math.sqrt(dx*dx + dy*dy);
+        if (player.magnetPower > 0 && p.type !== 'satellite' && player.storage < player.maxStorage && dist < 150 + (player.magnetPower * 50)) {
+            const pull = (1.0 + (player.magnetPower * 0.5)) * dt; p.x += (dx / dist) * pull; p.y += (dy / dist) * pull;
+        }
+        if (dist < player.radius + p.radius) {
+            if (p.type === 'satellite') {
+                player.health -= 25; createExplosion(p.x, p.y, '#ef4444'); state.particles.splice(i, 1); updateHUD();
+                if (player.health <= 0) { gameOver(); return; }
+            } else if (player.storage < player.maxStorage) {
+                player.storage += p.value; if (player.storage > player.maxStorage) player.storage = player.maxStorage;
+                createExplosion(p.x, p.y, p.type === 'scrap' ? '#fbbf24' : '#22c55e', 8);
+                createFloatingText(p.x, p.y, "+" + formatNumber(p.value), p.type === 'scrap' ? '#fbbf24' : '#4ade80');
+                state.particles.splice(i, 1); updateHUD();
+                if (player.storage >= player.maxStorage) { state.roundEndReason = "CARGO BAY FULL"; endRound(); return; }
+            }
+        }
+    }
+}
+
+function createFloatingText(x, y, text, color) {
+    floatingTexts.push({x: x, y: y, text: text, color: color, life: 1.0, vy: 1});
+}
+
+function createExplosion(x, y, color, count=10) { for(let i=0; i<count; i++) fx.push({ x: x, y: y, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, life: 1.0, color: color }); }
+
+function draw(dt) {
+    if (!ctx || !canvas) return;
+    ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#FFF';
+    state.stars.forEach(s => {
+        s.x -= (s.speed * (0.5 + (state.round * 0.1)) * dt); 
+        s.x -= (player.velocity.x * 0.1 * dt); 
+        s.y -= (player.velocity.y * 0.1 * dt);
+        if (s.x < 0) s.x = canvas.width; if (s.x > canvas.width) s.x = 0; if (s.y < 0) s.y = canvas.height; if (s.y > canvas.height) s.y = 0;
+        ctx.globalAlpha = s.brightness; ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha = 1.0;
+    state.particles.forEach(p => { if (p.type === 'satellite') drawSatellite(ctx, p); else if (p.type === 'scrap') drawScrap(ctx, p); else drawAsteroid(ctx, p); });
+    if (state.active) drawPlayer(ctx, player.x, player.y, player.angle);
+    for(let i=fx.length-1; i>=0; i--) { const f=fx[i]; f.x+=f.vx * dt; f.y+=f.vy * dt; f.life-=0.05 * dt; ctx.globalAlpha=f.life; ctx.fillStyle=f.color; ctx.fillRect(f.x,f.y,3,3); if(f.life<=0) fx.splice(i,1); }
+    
+    // Draw Floating Texts
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.font = "bold 14px Courier New";
+    floatingTexts.forEach(t => {
+        ctx.globalAlpha = Math.max(0, t.life);
+        ctx.fillStyle = t.color;
+        ctx.fillText(t.text, t.x, t.y);
+    });
+    ctx.restore();
+
+    ctx.globalAlpha = 1.0;
+    if (state.active) { ctx.beginPath(); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.arc(state.mouse.x, state.mouse.y, 10, 0, Math.PI*2); ctx.stroke(); ctx.beginPath(); ctx.fillStyle = '#ef4444'; ctx.arc(state.mouse.x, state.mouse.y, 2, 0, Math.PI*2); ctx.fill(); }
+}
+
+// Loop handles Delta Time (dt)
+function loop(timestamp) {
+    if (!state.lastTime) state.lastTime = timestamp;
+    const deltaTime = timestamp - state.lastTime;
+    state.lastTime = timestamp;
+    
+    // Normalizing dtFactor: 1.0 means exactly 60fps (16.6ms)
+    // If 144Hz (~7ms), dtFactor will be ~0.4, slowing down movements per frame
+    const dtFactor = Math.min(deltaTime, 100) / (1000/60);
+    
+    update(dtFactor); 
+    draw(dtFactor); 
+    requestAnimationFrame(loop); 
+}
+
+function formatNumber(num) {
+    return Math.floor(num).toLocaleString();
+}
+
+function updateHUD() {
+    document.getElementById('healthBar').style.width = `${Math.max(0, (player.health / player.maxHealth) * 100)}%`;
+    document.getElementById('healthText').textContent = `${Math.ceil(player.health)}/${player.maxHealth}`;
+    document.getElementById('storageBar').style.width = `${Math.min(100, (player.storage / player.maxStorage) * 100)}%`;
+    document.getElementById('storageText').textContent = `${formatNumber(player.storage)} / ${formatNumber(player.maxStorage)}`;
+    document.getElementById('scoreDisplay').textContent = `${formatNumber(state.totalDebris)} / ${formatNumber(GOAL)}`;
+    document.getElementById('roundDisplay').textContent = state.round;
+}
+
+function startRound() {
+    document.getElementById('menuOverlay').classList.add('hidden');
+    try { canvas.requestPointerLock().catch(e=>{}); } catch(e){}
+    state.active = true; state.paused = false;
+    state.roundTimer = (30 + Math.floor((state.round - 1) / 2) + player.timeBonus) * 60;
+    state.spawnTimer = 0; // Reset spawn timer
+    state.particles = []; player.x = canvas.width / 2; player.y = canvas.height / 2; player.velocity = {x:0, y:0}; player.storage = 0; updateHUD();
+    floatingTexts = []; // Clear old texts on new round
+}
+
+function endRound() { state.active = false; document.exitPointerLock(); state.totalDebris += player.storage; const earned = player.storage; player.storage = 0; updateHUD(); if (state.totalDebris >= GOAL) { document.getElementById('victoryOverlay').classList.remove('hidden'); return; } state.round++; showShop(earned); }
+function gameOver() { state.active = false; document.exitPointerLock(); document.getElementById('finalScore').textContent = `Asteroids Recovered: ${formatNumber(state.totalDebris)}`; document.getElementById('gameOverOverlay').classList.remove('hidden'); }
+
+const UPGRADES = [
+    { id: 'storage', name: 'Cargo Extender', desc: 'Increase Max Storage Capacity', baseCost: 500, costMult: 2.0, level: 1, getStats: () => ({ current: formatNumber(player.maxStorage), next: formatNumber(Math.floor(player.maxStorage * 1.8)) }), apply: () => { player.maxStorage = Math.floor(player.maxStorage * 1.8); } },
+    { id: 'health', name: 'Hull Reinforcement', desc: 'Increase Max Health', baseCost: 800, costMult: 1.5, level: 1, getStats: () => ({ current: player.maxHealth, next: player.maxHealth + 50 }), apply: () => { player.maxHealth += 50; } },
+    { id: 'repair', name: 'Nanobot Repair', desc: 'Repair 50 HP', baseCost: 200, costMult: 1.2, level: 1, canBuy: () => player.health < player.maxHealth, getStats: () => ({ current: Math.ceil(player.health), next: Math.min(player.maxHealth, Math.ceil(player.health) + 50) }), apply: () => { player.health = Math.min(player.maxHealth, player.health + 50); } },
+    { id: 'time', name: 'Temporal Battery', desc: 'Add +5s to Round Timer', baseCost: 400, costMult: 1.5, level: 1, getStats: () => ({ current: "+" + player.timeBonus + "s", next: "+" + (player.timeBonus + 5) + "s" }), apply: () => { player.timeBonus += 5; } }
+];
+const ELITE_UPGRADES = [ { id: 'magnet', name: 'Graviton Magnet', desc: 'Pull nearby asteroids automatically.', baseCost: 5000, costMult: 3.0, level: 0, getStats: () => ({ current: player.magnetPower, next: player.magnetPower + 1 }), apply: () => { player.magnetPower += 1; } } ];
+
+function createUpgradeCard(up, funds, isElite=false) {
+    let costLvl = isElite ? up.level : up.level - 1; const cost = Math.floor(up.baseCost * Math.pow(up.costMult, costLvl));
+    const canAfford = funds >= cost; const allowed = up.canBuy ? up.canBuy() : true;
+    const card = document.createElement('div'); card.className = isElite ? 'upgrade-card elite-card' : 'upgrade-card';
+    const stats = up.getStats ? up.getStats() : { current: '?', next: '?' };
+    let btnText = isElite && up.level === 0 ? 'UNLOCK' : 'UPGRADE'; if (up.id === 'repair') btnText = 'REPAIR'; if (!allowed) btnText = 'HP FULL';
+    card.innerHTML = `<h3 class="text-lg font-bold ${isElite?'text-fuchsia-400':'text-blue-300'}">${up.name}</h3><div class="relative h-12"><p class="text-sm text-gray-400 mb-2 card-desc absolute top-0 left-0 w-full">${up.desc}</p><div class="text-sm card-stats absolute top-0 left-0 w-full">Value: ${stats.current} &rarr; ${stats.next}</div></div><div class="flex justify-between items-center mt-2"><span class="text-yellow-500 font-mono">${formatNumber(cost)} asteroids</span><span class="text-xs text-gray-500">${isElite && up.level===0 ? 'Not Owned' : 'Lvl '+up.level}</span></div><button class="btn w-full mt-2 text-sm py-1" ${!canAfford||!allowed ? 'disabled' : ''}>${btnText}</button>`;
+    card.querySelector('button').onclick = () => { if (state.totalDebris >= cost && allowed) { state.totalDebris -= cost; up.level++; up.apply(); showShop(0); updateHUD(); } };
+    return card;
+}
+
+function showShop(earned) {
+    document.getElementById('menuOverlay').classList.remove('hidden'); const c = document.getElementById('upgradeContainer'); c.classList.remove('hidden'); c.innerHTML = '';
+    document.querySelector('#menuOverlay h1').textContent = `ROUND ${state.round-1} COMPLETE`;
+    const reasonColor = state.roundEndReason === "CARGO BAY FULL" ? "text-green-400" : "text-orange-400";
+    document.querySelector('#menuOverlay p').innerHTML = `<span class="text-2xl font-bold ${reasonColor} block mb-4 tracking-wider border-b border-gray-700 pb-2">${state.roundEndReason||"ROUND FINISHED"}</span>Asteroids Banked: <span class="text-green-400">+${formatNumber(earned)}</span><br>Total Progress: ${formatNumber(state.totalDebris)} / ${formatNumber(GOAL)}<br><span class="text-yellow-400 text-sm">Funds: ${formatNumber(state.totalDebris)}</span>`;
+    const r1 = document.createElement('div'); r1.className = "flex flex-wrap justify-center w-full mb-4"; r1.innerHTML = '<div class="w-full text-center text-gray-500 mb-2 border-b border-gray-700 pb-1">STANDARD SYSTEMS</div>'; UPGRADES.forEach(u => r1.appendChild(createUpgradeCard(u, state.totalDebris, false))); c.appendChild(r1);
+    const r2 = document.createElement('div'); r2.className = "flex flex-wrap justify-center w-full"; r2.innerHTML = '<div class="w-full text-center text-fuchsia-400 mb-2 border-b border-fuchsia-900 pb-1 mt-4">ELITE TECH (EXPERIMENTAL)</div>'; ELITE_UPGRADES.forEach(u => r2.appendChild(createUpgradeCard(u, state.totalDebris, true))); c.appendChild(r2);
+    const btn = document.getElementById('startBtn'); btn.textContent = "START NEXT ROUND"; btn.onclick = startRound;
+}
+</script>
+</body>
+</html>
